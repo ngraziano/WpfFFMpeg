@@ -2,14 +2,15 @@
 
 #include "Frame.h"
 
-namespace FfmpegProxy {
+namespace FfmpegProxy
+{
 
-	public ref class NewFrameEventArgs : System::EventArgs
+public
+	ref class NewFrameEventArgs : System::EventArgs
 	{
 
 	public:
-		NewFrameEventArgs(Frame^ newframe);
-		property Frame^ NewFrame;
-
+		NewFrameEventArgs(Frame ^ newframe);
+		property Frame ^ NewFrame;
 	};
 }

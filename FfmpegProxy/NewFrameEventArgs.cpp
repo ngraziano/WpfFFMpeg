@@ -3,7 +3,7 @@
 
 using namespace FfmpegProxy;
 
-NewFrameEventArgs::NewFrameEventArgs(Frame^ newframe)
+NewFrameEventArgs::NewFrameEventArgs(Frame ^ newframe)
 {
-	NewFrame =newframe;
+	NewFrame = newframe;
 }

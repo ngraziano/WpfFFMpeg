@@ -17,6 +17,9 @@ FFMPEGProxy::FFMPEGProxy()
 	stopSource = gcnew CancellationTokenSource();
 	loopEnded = gcnew ManualResetEventSlim(true);
 	avContext = avformat_alloc_context();
+	interruptDelegate = gcnew InterruptAVDelegate(this,&FFMPEGProxy::InterruptCallback);
+	avContext->interrupt_callback.callback = reinterpret_cast<int (*)(void*)>(System::Runtime::InteropServices::Marshal::GetFunctionPointerForDelegate(interruptDelegate).ToPointer());
+		
 }
 
 FFMPEGProxy::!FFMPEGProxy()
@@ -41,6 +44,16 @@ FFMPEGProxy::~FFMPEGProxy()
 	delete loopEnded;
 
 	this->!FFMPEGProxy();
+}
+
+int FFMPEGProxy::InterruptCallback(void *)
+{
+	// return 1 to stop the current ffmpeg call.
+	if (stopSource->IsCancellationRequested)
+		return 1;
+
+	// Continue
+	return 0;
 }
 
 void FFMPEGProxy::Open(String ^ uri)
@@ -114,7 +127,7 @@ void FFMPEGProxy::Open(String ^ uri)
 						int gotPicture = 0; // Flag.
 						int bytesUse = avcodec_decode_video2(videoCodecContext, oneFrame->avFrame, &gotPicture, &packet);
 
-						if (gotPicture)
+						if (gotPicture && !stopToken.IsCancellationRequested)
 						{
 							NewFrame(this, gcnew NewFrameEventArgs(oneFrame));
 						}

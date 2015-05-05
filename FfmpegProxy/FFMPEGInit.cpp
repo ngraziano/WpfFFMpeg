@@ -6,14 +6,13 @@ using namespace FFMpeg;
 using namespace System;
 using namespace msclr::interop;
 
-void FFMPEGInit::InitFFMPEG() 
+void FFMPEGInit::InitFFMPEG()
 {
-	if(!isFFMPEGInit)
+	if (!isFFMPEGInit)
 	{
 		isFFMPEGInit = true;
 
-		av_register_all( );
-		
+		av_register_all();
 
 		av_log_set_callback(reinterpret_cast<void (*)(void*, int, const char*, va_list)>(System::Runtime::InteropServices::Marshal::GetFunctionPointerForDelegate(logDelegate).ToPointer()));
 		av_log_set_level(AV_LOG_DEBUG);
@@ -21,65 +20,66 @@ void FFMPEGInit::InitFFMPEG()
 
 		av_log(NULL, AV_LOG_VERBOSE, "Setup log callback done\n");
 
-		avcodec_register_all( );
+		avcodec_register_all();
 
-		avformat_network_init( );
+		avformat_network_init();
 
-		// TODO Init FFMPEG
+		
 	}
 }
 
-void FFMPEGInit::UnInitFFMPEG() 
+void FFMPEGInit::UnInitFFMPEG()
 {
 
-	if(isFFMPEGInit)
+	if (isFFMPEGInit)
 	{
 		isFFMPEGInit = false;
-		// TODO UnInit FFMPEG
+		av_log_set_callback(nullptr);
+		avformat_network_deinit();
 	}
 }
 
 void FFMPEGInit::callbackLogFFMPEG(void* ptr, int level, const char* fmt, va_list vl)
 {
-	if((level == AV_LOG_DEBUG && FFMPEGlogger->IsDebugEnabled)
-		||(level == AV_LOG_VERBOSE && FFMPEGlogger->IsDebugEnabled)
-		||(level == AV_LOG_INFO && FFMPEGlogger->IsInfoEnabled)
-		||(level == AV_LOG_WARNING && FFMPEGlogger->IsWarnEnabled)
-		||(level == AV_LOG_ERROR && FFMPEGlogger->IsErrorEnabled)
-		||(level == AV_LOG_FATAL && FFMPEGlogger->IsFatalEnabled))
+	if ((level == AV_LOG_DEBUG && FFMPEGlogger->IsDebugEnabled)
+		|| (level == AV_LOG_VERBOSE && FFMPEGlogger->IsDebugEnabled)
+		|| (level == AV_LOG_INFO && FFMPEGlogger->IsInfoEnabled)
+		|| (level == AV_LOG_WARNING && FFMPEGlogger->IsWarnEnabled)
+		|| (level == AV_LOG_ERROR && FFMPEGlogger->IsErrorEnabled)
+		|| (level == AV_LOG_FATAL && FFMPEGlogger->IsFatalEnabled))
 	{
 		char line[1024];
 		static int print_prefix = 1;
 		av_log_format_line(ptr, level, fmt, vl, line, sizeof(line), &print_prefix);
-		String^ message = marshal_as<String^> (line);
+		String ^ message = marshal_as<String ^>(line);
 
 		switch (level)
 		{
-		case AV_LOG_DEBUG:
-		case AV_LOG_VERBOSE:
-			FFMPEGlogger->Debug(message);
-			break;
-		case AV_LOG_INFO:
-			FFMPEGlogger->Info(message);
-			break;
-		case AV_LOG_WARNING:
-			FFMPEGlogger->Warn(message);
-			break;
-		case AV_LOG_ERROR:
-			FFMPEGlogger->Error(message);
-			break;
-		case AV_LOG_FATAL:
-			FFMPEGlogger->Fatal(message);
-			break;
-		default:
-			FFMPEGlogger->WarnFormat("Unknow level {0} for message : {1}",level,message);
-			break;
+			case AV_LOG_DEBUG:
+			case AV_LOG_VERBOSE:
+				FFMPEGlogger->Debug(message);
+				break;
+			case AV_LOG_INFO:
+				FFMPEGlogger->Info(message);
+				break;
+			case AV_LOG_WARNING:
+				FFMPEGlogger->Warn(message);
+				break;
+			case AV_LOG_ERROR:
+				FFMPEGlogger->Error(message);
+				break;
+			case AV_LOG_FATAL:
+				FFMPEGlogger->Fatal(message);
+				break;
+			default:
+				FFMPEGlogger->WarnFormat("Unknow level {0} for message : {1}", level, message);
+				break;
 		}
 	}
 }
 
-String^ FFMPEGInit::GetErrorString(int errorNumber)
+String ^ FFMPEGInit::GetErrorString(int errorNumber)
 {
-		char buffer[AV_ERROR_MAX_STRING_SIZE];
-		return marshal_as<String^>(av_make_error_string(buffer,AV_ERROR_MAX_STRING_SIZE,errorNumber));
+	char buffer[AV_ERROR_MAX_STRING_SIZE];
+	return marshal_as<String ^>(av_make_error_string(buffer, AV_ERROR_MAX_STRING_SIZE, errorNumber));
 }
