@@ -2,13 +2,16 @@
 #pragma once
 
 #include "NewFrameEventArgs.h"
+#include "Packet.h"
 
 using namespace System;
 
 namespace FfmpegProxy
 {
+	using namespace System::Collections::Concurrent;
 	using namespace System::Runtime::InteropServices;
 	using namespace System::Threading;
+
 
 	[UnmanagedFunctionPointerAttribute(CallingConvention::Cdecl)]
 	delegate int InterruptAVDelegate(void* ptr);
@@ -30,6 +33,10 @@ public
 		ManualResetEventSlim ^ loopEnded;
 
 		int InterruptCallback(void* ptr);
+		void FrameReaderLoop();
+		void PacketLoop();
+
+		BlockingCollection<Packet^>^ packetQueue;
 
 	public:
 		FFMPEGProxy();

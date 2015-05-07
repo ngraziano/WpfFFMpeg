@@ -3,23 +3,29 @@
 #include "FfmpegProxy.h"
 #include "FFMPEGInit.h"
 #include "Frame.h"
+#include "Packet.h"
 
 using namespace FfmpegProxy;
 using namespace FFMpeg;
 using namespace msclr::interop;
 using namespace System::Threading;
+using namespace System::Collections::Concurrent;
 
 FFMPEGProxy::FFMPEGProxy()
 {
 	isDisposed = false;
+
+	// Init library if not already done
 	FFMPEGInit::InitFFMPEG();
 
+	// Manage stop
 	stopSource = gcnew CancellationTokenSource();
 	loopEnded = gcnew ManualResetEventSlim(true);
-	avContext = avformat_alloc_context();
 	interruptDelegate = gcnew InterruptAVDelegate(this,&FFMPEGProxy::InterruptCallback);
-	avContext->interrupt_callback.callback = reinterpret_cast<int (*)(void*)>(System::Runtime::InteropServices::Marshal::GetFunctionPointerForDelegate(interruptDelegate).ToPointer());
-		
+
+	// context
+	avContext = avformat_alloc_context();
+	packetQueue = gcnew BlockingCollection<Packet^>(100);
 }
 
 FFMPEGProxy::!FFMPEGProxy()
@@ -42,6 +48,8 @@ FFMPEGProxy::~FFMPEGProxy()
 	delete stopSource;
 	loopEnded->Wait();
 	delete loopEnded;
+
+	delete packetQueue;
 
 	this->!FFMPEGProxy();
 }
@@ -75,14 +83,14 @@ void FFMPEGProxy::Open(String ^ uri)
 
 		if (result)
 		{
-			Console::WriteLine("AVFORMAT OPEN INPUT : {0},{1}", result, FFMPEGInit::GetErrorString(result));
+			LOG->WarnFormat("AVFORMAT OPEN INPUT : {0},{1}", result, FFMPEGInit::GetErrorString(result));
 			return;
 		}
 
 		result = avformat_find_stream_info(avContext, nullptr);
 		if (result)
 		{
-			Console::WriteLine("AVFORMAT FIND STREAM INFO : {0},{1}", result, FFMPEGInit::GetErrorString(result));
+			LOG->WarnFormat("AVFORMAT FIND STREAM INFO : {0},{1}", result, FFMPEGInit::GetErrorString(result));
 			return;
 		}
 
@@ -101,6 +109,7 @@ void FFMPEGProxy::Open(String ^ uri)
 		if (videoCodecContext)
 		{
 			AVCodec* codec = avcodec_find_decoder(videoCodecContext->codec_id);
+
 			result = avcodec_open2(videoCodecContext, codec, nullptr);
 			if (result)
 			{
@@ -108,39 +117,79 @@ void FFMPEGProxy::Open(String ^ uri)
 				return;
 			}
 
-			Frame ^ oneFrame = gcnew Frame();
-
-			AVPacket packet;
-			av_init_packet(&packet);
-			bool eof = false;
-			while (!eof && !stopToken.IsCancellationRequested)
-			{
-				result = av_read_frame(avContext, &packet);
-				if (result)
-				{
-					eof = true;
-				}
-				else
-				{
-					if (packet.stream_index == videoStreamIndex)
-					{
-						int gotPicture = 0; // Flag.
-						int bytesUse = avcodec_decode_video2(videoCodecContext, oneFrame->avFrame, &gotPicture, &packet);
-
-						if (gotPicture && !stopToken.IsCancellationRequested)
-						{
-							NewFrame(this, gcnew NewFrameEventArgs(oneFrame));
-						}
-					}
-					av_free_packet(&packet);
-				}
-			}
-
-			delete oneFrame;
+			auto packetTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
+			//auto decodeTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
+			packetTask->Start();
+			FrameReaderLoop();
+			packetTask->Wait();
 		}
 	}
 	finally
 	{
 		loopEnded->Set();
 	}
+}
+
+void FFMPEGProxy::PacketLoop()
+{
+	auto stopToken = stopSource->Token;
+	bool eof = false;
+
+	while (!eof && !stopToken.IsCancellationRequested)
+	{
+		Packet ^ packet = gcnew Packet();
+		int result = av_read_frame(avContext, packet);
+		if (result)
+		{
+			if(result == AVERROR_EOF)
+			{
+				eof = true;
+				// ajoute un packet null en fin de chaque stream.
+				packetQueue->Add(Packet::GetNullPacket(videoStreamIndex),stopToken);
+				packetQueue->CompleteAdding();
+			}
+		}
+		else
+		{
+			if (packet->StreamIndex == videoStreamIndex)
+			{
+				packetQueue->Add(packet,stopToken);
+			}
+			else
+			{
+				// detruit les packet non géré.
+				delete packet;
+			}
+		}
+	}
+
+}
+
+void FFMPEGProxy::FrameReaderLoop()
+{
+	Frame ^ oneFrame = gcnew Frame();
+	auto stopToken = stopSource->Token;
+
+	try
+	{
+		while (!packetQueue->IsCompleted && !stopToken.IsCancellationRequested)
+		{
+			Packet ^ packet = packetQueue->Take(stopToken);
+			int gotPicture = 0; // Flag.
+			auto test=videoCodecContext->refcounted_frames;
+			int bytesUse = avcodec_decode_video2(videoCodecContext, oneFrame, &gotPicture, packet);
+
+			if (gotPicture && !stopToken.IsCancellationRequested)
+			{
+				NewFrame(this, gcnew NewFrameEventArgs(oneFrame));
+			}
+			delete packet;
+		}
+	}
+	catch(OperationCanceledException^)
+	{
+		LOG->Warn("Cancel operation.");
+	}
+	delete oneFrame;
+
 }

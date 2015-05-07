@@ -9,7 +9,9 @@ public
 	private:
 		bool isDisposed;
 		FFMpeg::SwsContext* img_convert_ctx;
-		internal : FFMpeg::AVFrame* avFrame;
+	internal:
+		FFMpeg::AVFrame* avFrame;
+		operator FFMpeg::AVFrame*() { return avFrame; };
 
 	public:
 		Frame();
