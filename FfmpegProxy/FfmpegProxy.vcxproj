@@ -82,6 +82,7 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AvDictionaryMarshal.h" />
     <ClInclude Include="FFMPEGInit.h" />
     <ClInclude Include="FfmpegProxy.h" />
     <ClInclude Include="Frame.h" />

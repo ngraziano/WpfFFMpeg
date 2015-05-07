@@ -4,6 +4,7 @@
 #include "FFMPEGInit.h"
 #include "Frame.h"
 #include "Packet.h"
+#include "AvDictionaryMarshal.h"
 
 using namespace FfmpegProxy;
 using namespace FFMpeg;
