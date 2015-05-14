@@ -26,7 +26,9 @@ FFMPEGProxy::FFMPEGProxy()
 
 	// context
 	avContext = avformat_alloc_context();
+	img_convert_ctx = nullptr;
 	packetQueue = gcnew BlockingCollection<Packet^>(100);
+	frameQueue = gcnew BlockingCollection<Frame^>(100);
 }
 
 FFMPEGProxy::!FFMPEGProxy()
@@ -36,6 +38,11 @@ FFMPEGProxy::!FFMPEGProxy()
 		avcodec_close(videoCodecContext);
 		videoCodecContext = nullptr;
 	}
+
+
+	sws_freeContext(img_convert_ctx);
+	img_convert_ctx = nullptr;
+
 	pin_ptr<AVFormatContext*> contextPtr = &avContext;
 	avformat_close_input(contextPtr);
 }
@@ -51,6 +58,7 @@ FFMPEGProxy::~FFMPEGProxy()
 	delete loopEnded;
 
 	delete packetQueue;
+	delete frameQueue;
 
 	this->!FFMPEGProxy();
 }
@@ -104,13 +112,16 @@ void FFMPEGProxy::Open(String ^ uri)
 
 				// Get the Codec context associated with this stream.
 				videoCodecContext = avContext->streams[i]->codec;
+				// Time base en micro second
+				timeBaseStreamVideo = 1000000 * av_q2d(avContext->streams[i]->time_base) ;
+
 			}
 		}
 
 		if (videoCodecContext)
 		{
 			AVCodec* codec = avcodec_find_decoder(videoCodecContext->codec_id);
-
+			videoCodecContext->refcounted_frames = 1;
 			result = avcodec_open2(videoCodecContext, codec, nullptr);
 			if (result)
 			{
@@ -119,9 +130,11 @@ void FFMPEGProxy::Open(String ^ uri)
 			}
 
 			auto packetTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
-			//auto decodeTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
+			auto decodeTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::FrameDecodeLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
 			packetTask->Start();
+			decodeTask->Start();
 			FrameReaderLoop();
+			decodeTask->Wait();
 			packetTask->Wait();
 		}
 	}
@@ -168,29 +181,149 @@ void FFMPEGProxy::PacketLoop()
 
 void FFMPEGProxy::FrameReaderLoop()
 {
-	Frame ^ oneFrame = gcnew Frame();
+	auto stopToken = stopSource->Token;
+
+	int64_t time = av_gettime_relative();
+	int64_t oldPTS = 0;
+	int64_t timeToWait = 0;
+	int64_t correctDelay = 0;
+	try
+
+	{
+		/* verifier l'utilité
+		if(timeBaseStreamVideo / 10000 >= 1)
+		timeBeginPeriod(timeBaseStreamVideo / 10000);
+		else
+		timeBeginPeriod(1);
+		*/
+
+		while (!frameQueue->IsCompleted && !stopToken.IsCancellationRequested)
+		{
+			int64_t newtime = av_gettime_relative();
+			int64_t error = newtime - time - timeToWait; 
+			correctDelay -= error / 100;
+			time = newtime;
+
+
+			Frame ^ oneFrame = frameQueue->Take(stopToken);
+
+			int64_t timeToWaitCorrected = 0;
+			if(oldPTS != 0)
+			{
+				int64_t newtimeToWait;
+				newtimeToWait = (oneFrame->BestEffortTimeStamp - oldPTS) * timeBaseStreamVideo; 
+
+				newtimeToWait += timeBaseStreamVideo /2 * oneFrame->avFrame->repeat_pict;
+
+				// corrige les valeur incoherente de timetowait
+				if(newtimeToWait > 0 && (newtimeToWait < 10 * timeToWait || timeToWait == 0) )
+					timeToWait = newtimeToWait;
+
+				timeToWaitCorrected = timeToWait + correctDelay;
+			}
+			if (!stopToken.IsCancellationRequested)
+			{
+				//	Console::WriteLine(" Delay {0} Error : {2} , Correction {1} Queue {3}",timeToWait, correctDelay,error,frameQueue->Count);
+
+				if(timeToWaitCorrected > 0)
+				{
+					av_usleep(timeToWaitCorrected);
+				}
+				else
+				{
+					correctDelay = - timeToWait;
+				}
+
+				NewFrame(this, gcnew NewFrameEventArgs(oneFrame));
+			}
+
+			oldPTS = oneFrame->BestEffortTimeStamp;
+
+
+			delete oneFrame;
+		}
+	}
+	catch(OperationCanceledException^)
+	{
+		LOG->Warn("Frame Reader Loop Cancel operation.");
+	}
+	/*
+	if(timeBaseStreamVideo / 10000 >= 1)
+	timeEndPeriod(timeBaseStreamVideo / 10000);
+	else
+	timeEndPeriod(1);
+	*/
+}
+
+void FFMPEGProxy::FrameDecodeLoop()
+{
 	auto stopToken = stopSource->Token;
 
 	try
 	{
 		while (!packetQueue->IsCompleted && !stopToken.IsCancellationRequested)
 		{
+			Frame ^ oneFrame = gcnew Frame();
+
 			Packet ^ packet = packetQueue->Take(stopToken);
 			int gotPicture = 0; // Flag.
-			auto test=videoCodecContext->refcounted_frames;
 			int bytesUse = avcodec_decode_video2(videoCodecContext, oneFrame, &gotPicture, packet);
 
-			if (gotPicture && !stopToken.IsCancellationRequested)
+			if (gotPicture)
 			{
-				NewFrame(this, gcnew NewFrameEventArgs(oneFrame));
+				frameQueue->Add(oneFrame,stopToken);
 			}
 			delete packet;
 		}
+
+		// empty buffer to retest....
+		int gotPicture = 0; // Flag.
+		do
+		{
+			Frame ^ oneFrame = gcnew Frame();
+			gotPicture = 0;
+			int bytesUse = avcodec_decode_video2(videoCodecContext, oneFrame, &gotPicture, Packet::GetNullPacket(videoStreamIndex));
+
+			if (gotPicture)
+			{
+				frameQueue->Add(oneFrame,stopToken);
+			}
+		}
+		while(gotPicture);
+		frameQueue->CompleteAdding();
 	}
 	catch(OperationCanceledException^)
 	{
-		LOG->Warn("Cancel operation.");
+		LOG->Warn("Frame Decode Loop Cancel operation.");
 	}
-	delete oneFrame;
+}
 
+void FFMPEGProxy::CopyToBuffer(Frame^ frame,System::IntPtr buffer, int linesize)
+{
+	img_convert_ctx = sws_getCachedContext(img_convert_ctx,
+		frame->Width, frame->Height, AV_PIX_FMT_YUV420P,
+		frame->Width, frame->Height, PIX_FMT_RGB32,
+		SWS_BICUBIC,
+		nullptr, nullptr, nullptr);
+
+	uint8_t* data[AV_NUM_DATA_POINTERS];
+	int linesizeArray[AV_NUM_DATA_POINTERS];
+
+	for (int i = 0; i < AV_NUM_DATA_POINTERS; i++)
+	{
+		data[i] = 0;
+		linesizeArray[i] = 0;
+	}
+
+	data[0] = (uint8_t*)buffer.ToPointer();
+	linesizeArray[0] = linesize;
+
+	sws_scale(img_convert_ctx, frame->avFrame->data, frame->avFrame->linesize, 0, frame->Height,
+		data,
+		linesizeArray);
+}
+
+double FFMPEGProxy::GuessAspectRatio(Frame ^frame)
+{
+	return  av_q2d(av_guess_sample_aspect_ratio(avContext,avContext->streams[videoStreamIndex],frame));
 }

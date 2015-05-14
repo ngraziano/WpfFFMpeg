@@ -27,6 +27,9 @@ public
 		FFMpeg::AVFormatContext* avContext;
 		int videoStreamIndex;
 		FFMpeg::AVCodecContext* videoCodecContext;
+		int64_t timeBaseStreamVideo;
+		FFMpeg::SwsContext* img_convert_ctx;
+
 
 		InterruptAVDelegate^ interruptDelegate;
 		CancellationTokenSource ^ stopSource;
@@ -35,14 +38,19 @@ public
 		int InterruptCallback(void* ptr);
 		void FrameReaderLoop();
 		void PacketLoop();
+		void FrameDecodeLoop();
 
 		BlockingCollection<Packet^>^ packetQueue;
+		BlockingCollection<Frame^>^ frameQueue;
 
 	public:
 		FFMPEGProxy();
 		!FFMPEGProxy();
 		~FFMPEGProxy();
 		void Open(String ^ uri);
+		void CopyToBuffer(Frame^ frame,System::IntPtr buffer, int linesize);
+		double GuessAspectRatio(Frame ^frame);
+
 		event EventHandler<NewFrameEventArgs ^> ^ NewFrame;
 	};
 }

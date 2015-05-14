@@ -6,6 +6,9 @@
 #include <msclr\marshal.h>
 #include <inttypes.h>
 
+#pragma comment( lib, "winmm" )
+
+
 namespace FFMpeg
 {
 	extern "C"
@@ -16,6 +19,7 @@ namespace FFMpeg
 		#include <libavcodec\avcodec.h>
 		#pragma comment( lib, "avutil" )
 		#include <libavutil\avutil.h>
+		#include <libavutil\time.h>
 		#pragma comment( lib, "swscale" )
 		#include <libswscale\swscale.h>
 	}

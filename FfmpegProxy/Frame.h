@@ -2,13 +2,12 @@
 
 namespace FfmpegProxy
 {
-
+	using namespace System;
 public
 	ref class Frame
 	{
 	private:
 		bool isDisposed;
-		FFMpeg::SwsContext* img_convert_ctx;
 	internal:
 		FFMpeg::AVFrame* avFrame;
 		operator FFMpeg::AVFrame*() { return avFrame; };
@@ -17,7 +16,9 @@ public
 		Frame();
 		~Frame();
 		!Frame();
-
+		
+		void UnrefBuffer();
+		
 		property int Height
 		{
 			int get() { return avFrame->height; }
@@ -28,6 +29,9 @@ public
 			int get() { return avFrame->width; }
 		}
 
-		void CopyToBuffer(System::IntPtr buffer, int linesize);
+		property Int64 BestEffortTimeStamp
+		{
+			Int64 get() { return FFMpeg::av_frame_get_best_effort_timestamp(avFrame); }
+		}
 	};
 }

@@ -31,11 +31,17 @@ namespace TestApp
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             if (proxy != null)
-                proxy.Dispose();
+            {
+                var oldproxy = proxy;
+                oldproxy.NewFrame -= proxy_NewFrame;
+                // desynchronisation pour eviter les interblocage avec l'affichage.
+                Task.Run(() => oldproxy.Dispose());
+            }
             proxy = new FFMPEGProxy();
             proxy.NewFrame += proxy_NewFrame;
-            //            string uri = "h:\\Prometheus.avi";
-            string uri = "rtsp://mafreebox.freebox.fr/fbxtv_pub/stream?namespace=1&service=201&flavour=ld";
+            string uri = "rtsp://mafreebox.freebox.fr/fbxtv_pub/stream?namespace=1&service=201&flavour=sd";
+            
+            
             Task.Run(
                 () =>
                 {
@@ -57,24 +63,32 @@ namespace TestApp
 
         void proxy_NewFrame(object sender, NewFrameEventArgs e)
         {
+            FFMPEGProxy proxy = sender as FFMPEGProxy;
+            var frame = e.NewFrame;
+
+            if (proxy == null || frame == null)
+                return;
+
             Dispatcher.Invoke(new Action
             (() =>
             {
-            var frame = e.NewFrame;
-            if (!IsBitmapValid(frame))
-            {
-                bitmapFrame = new WriteableBitmap(
-                    frame.Width,
-                    frame.Height, 96, 96 * 16 / 9, PixelFormats.Pbgra32
-                    , null
-                    );
-                   videodest.Source = bitmapFrame;
-            }
+                if (!IsBitmapValid(frame))
+                {
+                    double ratio = proxy.GuessAspectRatio(frame);
+                    if (ratio == 0)
+                        ratio = 16 / 9;
+                    bitmapFrame = new WriteableBitmap(
+                        frame.Width,
+                        frame.Height, 96, 96 * ratio, PixelFormats.Pbgra32
+                        , null
+                        );
+                    videodest.Source = bitmapFrame;
+                }
 
-            bitmapFrame.Lock();
-            frame.CopyToBuffer(bitmapFrame.BackBuffer, bitmapFrame.BackBufferStride);
-            bitmapFrame.AddDirtyRect(new Int32Rect(0, 0, frame.Width, frame.Height));
-            bitmapFrame.Unlock();
+                bitmapFrame.Lock();
+                proxy.CopyToBuffer(frame,bitmapFrame.BackBuffer, bitmapFrame.BackBufferStride);
+                bitmapFrame.AddDirtyRect(new Int32Rect(0, 0, frame.Width, frame.Height));
+                bitmapFrame.Unlock();
             }));
             //  e.NewFrame
         }
@@ -84,13 +98,15 @@ namespace TestApp
             if (bitmapFrame == null)
                 return false;
 
-            if (bitmapFrame.Width != frame.Width)
+            if (bitmapFrame.PixelWidth != frame.Width)
                 return false;
 
-            // Sinon recreation systématique
-            if (bitmapFrame.Height >= frame.Height)
+            if (bitmapFrame.PixelHeight != frame.Height)
+            {
+                string taille = string.Format("Taille bitmap {0}, taille frame {1}", bitmapFrame.PixelHeight, frame.Height);
+                Console.WriteLine(taille);
                 return false;
-
+            }
             return true;
         }
 
