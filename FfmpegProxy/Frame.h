@@ -3,8 +3,10 @@
 namespace FfmpegProxy
 {
 	using namespace System;
-public
-	ref class Frame
+	/// <summary>
+	/// Represent an FFMPEG frame. 
+	/// </summary>
+	public ref class Frame
 	{
 	private:
 		bool isDisposed;
@@ -19,16 +21,34 @@ public
 		
 		void UnrefBuffer();
 		
+		/// <summary>
+		/// Gets the height.
+		/// </summary>
+		/// <value>
+		/// The height.
+		/// </value>
 		property int Height
 		{
 			int get() { return avFrame->height; }
 		}
 
+		/// <summary>
+		/// Gets the width.
+		/// </summary>
+		/// <value>
+		/// The width.
+		/// </value>
 		property int Width
 		{
 			int get() { return avFrame->width; }
 		}
 
+		/// <summary>
+		/// Gets the best effort time stamp.
+		/// </summary>
+		/// <value>
+		/// The best effort time stamp.
+		/// </value>
 		property Int64 BestEffortTimeStamp
 		{
 			Int64 get() { return FFMpeg::av_frame_get_best_effort_timestamp(avFrame); }

@@ -4,13 +4,18 @@
 using namespace FFMpeg;
 using namespace FfmpegProxy;
 
+/// <summary>
+/// Initializes a new instance of the <see cref="Frame" /> class.
+/// </summary>
 Frame::Frame(void)
 {
 	isDisposed = false;
 	avFrame = av_frame_alloc();
 }
 
-/* Free managed and unmanaged object */
+/// <summary>
+/// Finalizes an instance of the <see cref="Frame"/> class.
+/// </summary>
 Frame::~Frame()
 {
 	if (isDisposed)
@@ -19,7 +24,10 @@ Frame::~Frame()
 	this->!Frame();
 }
 
-/* Free unmanaged object */
+/// <summary>
+/// Free unmanaged object in the frame.
+/// </summary>
+/// <returns></returns>
 Frame::!Frame()
 {
 	pin_ptr<AVFrame*> framePtr = &avFrame;
@@ -27,6 +35,9 @@ Frame::!Frame()
 }
 
 
+/// <summary>
+/// Decrease reference count of the data buffer.
+/// </summary>
 void Frame::UnrefBuffer()
 {
 	av_frame_unref(avFrame);

@@ -22,8 +22,16 @@ namespace FFMPEGProxyTest
         void PlaySomethingInvalid()
         {
             FFMPEGProxy testProxy = new FFMPEGProxy();
-            // file:///
-            testProxy.Open("h:\\Prometheus.avi");
+
+            testProxy.Open("InexistentFileName");
+            
+        }
+
+        [Fact]
+        void GuessAspectRatio()
+        {
+            FFMPEGProxy testProxy = new FFMPEGProxy();
+            Assert.ThrowsAny<ArgumentNullException>(()=>testProxy.GuessAspectRatio(null));
         }
     }
 }

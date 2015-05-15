@@ -112,7 +112,7 @@ void FFMPEGProxy::Open(String ^ uri)
 
 				// Get the Codec context associated with this stream.
 				videoCodecContext = avContext->streams[i]->codec;
-				// Time base en micro second
+				// Time base in micro second
 				timeBaseStreamVideo = 1000000 * av_q2d(avContext->streams[i]->time_base) ;
 
 			}
@@ -179,48 +179,50 @@ void FFMPEGProxy::PacketLoop()
 
 }
 
+/// <summary>
+/// Frames reader loop.
+/// </summary>
 void FFMPEGProxy::FrameReaderLoop()
 {
 	auto stopToken = stopSource->Token;
-
+	// time of the last loop
 	int64_t time = av_gettime_relative();
+	// old presentation time
 	int64_t oldPTS = 0;
+	// last time to wait calculated
 	int64_t timeToWait = 0;
+	// correction delay
 	int64_t correctDelay = 0;
+
 	try
-
 	{
-		/* verifier l'utilité
-		if(timeBaseStreamVideo / 10000 >= 1)
-		timeBeginPeriod(timeBaseStreamVideo / 10000);
-		else
-		timeBeginPeriod(1);
-		*/
-
 		while (!frameQueue->IsCompleted && !stopToken.IsCancellationRequested)
 		{
 			int64_t newtime = av_gettime_relative();
 			int64_t error = newtime - time - timeToWait; 
+			// adjust correction delay by 1% of the error (100 frame to get the full error corrected : filter spike in error)
 			correctDelay -= error / 100;
 			time = newtime;
 
 
 			Frame ^ oneFrame = frameQueue->Take(stopToken);
-
+			
+			// calculate the time to wait
 			int64_t timeToWaitCorrected = 0;
 			if(oldPTS != 0)
 			{
 				int64_t newtimeToWait;
 				newtimeToWait = (oneFrame->BestEffortTimeStamp - oldPTS) * timeBaseStreamVideo; 
-
+				// if frame is repeated
 				newtimeToWait += timeBaseStreamVideo /2 * oneFrame->avFrame->repeat_pict;
 
-				// corrige les valeur incoherente de timetowait
+				// prevent invalid time to wait value (must not increase of factor 10 and must be positive)
 				if(newtimeToWait > 0 && (newtimeToWait < 10 * timeToWait || timeToWait == 0) )
 					timeToWait = newtimeToWait;
 
 				timeToWaitCorrected = timeToWait + correctDelay;
 			}
+
 			if (!stopToken.IsCancellationRequested)
 			{
 				//	Console::WriteLine(" Delay {0} Error : {2} , Correction {1} Queue {3}",timeToWait, correctDelay,error,frameQueue->Count);
@@ -247,12 +249,6 @@ void FFMPEGProxy::FrameReaderLoop()
 	{
 		LOG->Warn("Frame Reader Loop Cancel operation.");
 	}
-	/*
-	if(timeBaseStreamVideo / 10000 >= 1)
-	timeEndPeriod(timeBaseStreamVideo / 10000);
-	else
-	timeEndPeriod(1);
-	*/
 }
 
 void FFMPEGProxy::FrameDecodeLoop()
@@ -276,7 +272,7 @@ void FFMPEGProxy::FrameDecodeLoop()
 			delete packet;
 		}
 
-		// empty buffer to retest....
+		// empty buffer, need to be retest....
 		int gotPicture = 0; // Flag.
 		do
 		{
@@ -300,8 +296,17 @@ void FFMPEGProxy::FrameDecodeLoop()
 
 void FFMPEGProxy::CopyToBuffer(Frame^ frame,System::IntPtr buffer, int linesize)
 {
+	if(!frame)
+		throw gcnew ArgumentNullException("frame");
+
+	if(buffer == System::IntPtr::Zero)
+		throw gcnew ArgumentNullException("buffer");
+
+	if(linesize<=0)
+		throw gcnew ArgumentOutOfRangeException("linesize",linesize,"linesize must be positive"); 
+
 	img_convert_ctx = sws_getCachedContext(img_convert_ctx,
-		frame->Width, frame->Height, AV_PIX_FMT_YUV420P,
+		frame->Width, frame->Height, videoCodecContext->pix_fmt,
 		frame->Width, frame->Height, PIX_FMT_RGB32,
 		SWS_BICUBIC,
 		nullptr, nullptr, nullptr);
@@ -325,5 +330,8 @@ void FFMPEGProxy::CopyToBuffer(Frame^ frame,System::IntPtr buffer, int linesize)
 
 double FFMPEGProxy::GuessAspectRatio(Frame ^frame)
 {
+	if(!frame)
+		throw gcnew ArgumentNullException("frame");
+
 	return  av_q2d(av_guess_sample_aspect_ratio(avContext,avContext->streams[videoStreamIndex],frame));
 }
