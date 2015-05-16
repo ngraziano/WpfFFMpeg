@@ -72,7 +72,7 @@ void FFMPEGInit::callbackLogFFMPEG(void* ptr, int level, const char* fmt, va_lis
 				FFMPEGlogger->Fatal(message);
 				break;
 			default:
-				FFMPEGlogger->WarnFormat("Unknow level {0} for message : {1}", level, message);
+				FFMPEGlogger->WarnFormat("Unknown level {0} for message : {1}", level, message);
 				break;
 		}
 	}

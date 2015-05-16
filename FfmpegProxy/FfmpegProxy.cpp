@@ -5,6 +5,7 @@
 #include "Frame.h"
 #include "Packet.h"
 #include "AvDictionaryMarshal.h"
+#include <msclr\auto_handle.h>
 
 using namespace FfmpegProxy;
 using namespace FFMpeg;
@@ -29,6 +30,7 @@ FFMPEGProxy::FFMPEGProxy()
 	img_convert_ctx = nullptr;
 	packetQueue = gcnew BlockingCollection<Packet^>(100);
 	frameQueue = gcnew BlockingCollection<Frame^>(100);
+	optionsDictionary = gcnew Dictionary<String^,String^>(); 
 }
 
 FFMPEGProxy::!FFMPEGProxy()
@@ -87,9 +89,18 @@ void FFMPEGProxy::Open(String ^ uri)
 	{
 		const char* uriChar = marshalContext.marshal_as<const char*>(uri);
 		pin_ptr<AVFormatContext*> contextPtr = &avContext;
+		
+		AVDictionary** optionPtr = marshalContext.marshal_as<AVDictionary**>(Options);
 
-		int result = avformat_open_input(contextPtr, uriChar, nullptr, nullptr);
+		int result = avformat_open_input(contextPtr, uriChar, nullptr, optionPtr);
+		
+		auto optionResul = marshal_as<IDictionary<String^,String^>^>(*optionPtr);
 
+		for each (String^ var in optionResul->Keys)
+		{
+			Console::WriteLine(var);
+		}
+		
 		if (result)
 		{
 			LOG->WarnFormat("AVFORMAT OPEN INPUT : {0},{1}", result, FFMPEGInit::GetErrorString(result));
@@ -129,13 +140,14 @@ void FFMPEGProxy::Open(String ^ uri)
 				return;
 			}
 
-			auto packetTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
-			auto decodeTask = gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::FrameDecodeLoop),stopToken, Tasks::TaskCreationOptions::LongRunning);
+			msclr::auto_handle<Tasks::Task> packetTask (gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::PacketLoop),stopToken, Tasks::TaskCreationOptions::LongRunning));
+			msclr::auto_handle<Tasks::Task> decodeTask (gcnew Tasks::Task(gcnew Action(this,&FFMPEGProxy::FrameDecodeLoop),stopToken, Tasks::TaskCreationOptions::LongRunning));
 			packetTask->Start();
 			decodeTask->Start();
 			FrameReaderLoop();
 			decodeTask->Wait();
 			packetTask->Wait();
+			
 		}
 	}
 	finally
@@ -214,7 +226,7 @@ void FFMPEGProxy::FrameReaderLoop()
 				int64_t newtimeToWait;
 				newtimeToWait = (oneFrame->BestEffortTimeStamp - oldPTS) * timeBaseStreamVideo; 
 				// if frame is repeated
-				newtimeToWait += timeBaseStreamVideo /2 * oneFrame->avFrame->repeat_pict;
+				newtimeToWait += timeBaseStreamVideo /2 * oneFrame->ReapeatPict;
 
 				// prevent invalid time to wait value (must not increase of factor 10 and must be positive)
 				if(newtimeToWait > 0 && (newtimeToWait < 10 * timeToWait || timeToWait == 0) )

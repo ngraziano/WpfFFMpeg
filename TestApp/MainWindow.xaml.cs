@@ -39,6 +39,8 @@ namespace TestApp
             }
             proxy = new FFMPEGProxy();
             proxy.NewFrame += proxy_NewFrame;
+            proxy.Options.Add("fflags", "nobuffer");
+            proxy.Options.Add("tot", "nobuffer");
             string uri = "rtsp://mafreebox.freebox.fr/fbxtv_pub/stream?namespace=1&service=201&flavour=sd";
             
             

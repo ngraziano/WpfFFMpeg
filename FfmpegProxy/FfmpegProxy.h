@@ -9,6 +9,7 @@ using namespace System;
 namespace FfmpegProxy
 {
 	using namespace System::Collections::Concurrent;
+	using namespace System::Collections::Generic;
 	using namespace System::Runtime::InteropServices;
 	using namespace System::Threading;
 
@@ -31,17 +32,21 @@ public
 		FFMpeg::SwsContext* img_convert_ctx;
 
 
-		InterruptAVDelegate^ interruptDelegate;
-		CancellationTokenSource ^ stopSource;
-		ManualResetEventSlim ^ loopEnded;
+		initonly InterruptAVDelegate^ interruptDelegate;
+		initonly CancellationTokenSource ^ stopSource;
+		initonly ManualResetEventSlim ^ loopEnded;
 
 		int InterruptCallback(void* ptr);
 		void FrameReaderLoop();
 		void PacketLoop();
 		void FrameDecodeLoop();
 
-		BlockingCollection<Packet^>^ packetQueue;
-		BlockingCollection<Frame^>^ frameQueue;
+		initonly BlockingCollection<Packet^>^ packetQueue;
+		initonly BlockingCollection<Frame^>^ frameQueue;
+
+		initonly Dictionary<String^,String^>^ optionsDictionary;
+
+		
 
 	public:
 		FFMPEGProxy();
@@ -50,6 +55,11 @@ public
 		void Open(String ^ uri);
 		void CopyToBuffer(Frame^ frame,System::IntPtr buffer, int linesize);
 		double GuessAspectRatio(Frame ^frame);
+
+		property IDictionary<String^,String^>^ Options 
+		{
+			IDictionary<String^,String^>^ get() { return optionsDictionary; }
+		}
 
 		event EventHandler<NewFrameEventArgs ^> ^ NewFrame;
 	};

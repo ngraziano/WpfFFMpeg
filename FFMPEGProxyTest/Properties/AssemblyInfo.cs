@@ -8,9 +8,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("FFMPEGProxyTest")]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("INEO")]
+[assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("FFMPEGProxyTest")]
-[assembly: AssemblyCopyright("Copyright © INEO 2015")]
+[assembly: AssemblyCopyright("Copyright © Nicolas Graziano 2015")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

@@ -53,5 +53,11 @@ namespace FfmpegProxy
 		{
 			Int64 get() { return FFMpeg::av_frame_get_best_effort_timestamp(avFrame); }
 		}
+
+		property int ReapeatPict
+		{
+			int get() { return avFrame->repeat_pict; }
+		}
+
 	};
 }

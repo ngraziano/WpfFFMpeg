@@ -24,26 +24,25 @@ namespace msclr
 		}
 
 		template <>
-		ref class context_node<FFMpeg::AVDictionary*, IDictionary<String ^, String ^> ^> : public context_node_base
+		ref class context_node<FFMpeg::AVDictionary**, IDictionary<String ^, String ^> ^> : public context_node_base
 		{
 		private:
-			FFMpeg::AVDictionary* toPtr;
+			FFMpeg::AVDictionary** toPtr;
 
 		public:
-			context_node(FFMpeg::AVDictionary*& toObject, IDictionary<String ^, String ^> ^ fromObject)
+			context_node(FFMpeg::AVDictionary**& toObject, IDictionary<String ^, String ^> ^ fromObject)
 			{
-				toPtr = nullptr;
+				toPtr = new FFMpeg::AVDictionary*();
 
 				// Context  local,  char* are copied by av_dict_set
 				marshal_context context;
 
-				pin_ptr<FFMpeg::AVDictionary*> dictionaryPtr = &toPtr;
 				
 				for each(System::Collections::Generic::KeyValuePair<String ^, String ^> entry in fromObject)
 				{
 					const char* key = context.marshal_as<const char*>(entry.Key);
 					const char* value = context.marshal_as<const char*>(entry.Value);
-					av_dict_set(dictionaryPtr, key, value, 0);
+					av_dict_set(toPtr, key, value, 0);
 				}
 				toObject = toPtr;
 			}
@@ -57,8 +56,8 @@ namespace msclr
 			{
 				if (toPtr != nullptr)
 				{
-					pin_ptr<FFMpeg::AVDictionary*> dictionaryPtr = &toPtr;
-					av_dict_free(dictionaryPtr);
+					av_dict_free(toPtr);
+					delete toPtr;
 					toPtr = nullptr;
 				}
 			}
